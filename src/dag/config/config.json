@@ -1,0 +1,97 @@
+{
+    "model": {
+        "model_id": "CDR",
+        "version": 1,
+        "location": "s3://ml-projects-dev-us-east-1/CDR",
+        "role": "[Insert AWS Role]"
+    },
+    "resources": [
+        {
+            "stage": "feature_engineering",
+            "image": "173754725891.dkr.ecr.us-east-1.amazonaws.com/sagemaker-spark-processing:2.4-cpu-py37-v1.0",
+            "code": {
+                "source_path": "pipeline/feature_engineering",
+                "local_path": "opt/ml/processing/code/",
+                "file_name": "feature_engineering_spark.py"
+            },
+            "input": {
+                "id": "dataset",
+                "s3_path": "s3://ml-projects-dev-us-east-1/CDR/data/",
+                "local_path": "/opt/ml/processing/input/",
+                "file_name": "dataset_credit_risk.csv"
+            },
+            "output": {
+                "id": "processed_dataset",
+                "s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/feature_engineering/processed_dataset",
+                "local_path": "/opt/ml/processing/output/"
+            },
+            "instance": {
+                "type": "ml.c5.xlarge",
+                "count": 5,
+                "size_GB": 10,
+                "max_runtime": 600
+            }
+        },
+        {
+            "stage": "register_features",
+            "feature_group": "credit_default_risk",
+            "record_identifier": "id",
+            "event_time": "loan_date",
+            "s3_path": "s3://ml-projects-dev-us-east-1/CDR/feature_group",
+            "image": "[Insert Image]",
+            "input": {
+                "id": "train",
+                "s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/feature_engineering/processed_dataset"
+            }
+        },
+        {
+            "stage": "training",
+            "image": "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:0.23-1-cpu-py3",
+            "code": {
+                "source_path": "pipeline/training",
+                "file_name": "training.py",
+                "tar_s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/train",
+                "tar_name": "train.tar.gz"
+            },
+            "input": {
+                "id": "train",
+                "s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/feature_engineering/processed_dataset",
+                "local_path": "/opt/ml/input/data/train/",
+                "content_type": "parquet"
+            },
+            "output": {
+                "id": "model",
+                "s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/train",
+                "local_path": "/opt/ml/processing/output/",
+                "file_name": "train.tar.gz"
+            },
+            "instance": {
+                "type": "ml.c5.xlarge",
+                "count": 1,
+                "size_GB": 10,
+                "max_runtime": 600
+            }
+        },
+        {
+            "stage": "create_model_variant",
+            "image": "683313688378.dkr.ecr.us-east-1.amazonaws.com/sagemaker-scikit-learn:0.23-1-cpu-py3",
+            "code": {
+                "source_path": "pipeline/inference",
+                "file_name": "inference.py",
+                "tar_s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/registry",
+                "tar_name": "source.tar.gz"
+            },
+            "model": {
+                "tar_s3_path": "s3://ml-projects-dev-us-east-1/CDR/tmp/train",
+                "tar_name": "output/model.tar.gz"
+            }
+        },
+        {
+            "stage": "create_endpoint",
+            "instance": {
+                "type": "ml.c5.xlarge",
+                "count": 1
+            }
+        }
+    ]
+}
